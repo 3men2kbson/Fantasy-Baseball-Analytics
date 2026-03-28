@@ -57,12 +57,47 @@ async def auth_login():
     return RedirectResponse(url)
 
 
+#@app.get("/auth/callback")
+#async def auth_callback(code: str, state: str = None):
+#    """Step 2: Exchange code for tokens."""
+#    import base64
+
+#    credentials = base64.b64encode(
+#        f"{YAHOO_CLIENT_ID}:{YAHOO_CLIENT_SECRET}".encode()
+#    ).decode()
+
+#    async with httpx.AsyncClient() as client:
+#        resp = await client.post(
+#            YAHOO_TOKEN_URL,
+#            headers={
+#                "Authorization": f"Basic {credentials}",
+#                "Content-Type": "application/x-www-form-urlencoded",
+#            },
+#            data={
+#                "grant_type":   "authorization_code",
+#                "code":         code,
+#                "redirect_uri": YAHOO_REDIRECT_URI,
+#            },
+#        )
+
+#    if resp.status_code != 200:
+#        raise HTTPException(400, f"Token exchange failed: {resp.text}")
+
+#    tokens = resp.json()
+#    TOKEN_STORE["access_token"]  = tokens["access_token"]
+#    TOKEN_STORE["refresh_token"] = tokens.get("refresh_token", "")
+#    TOKEN_STORE["expires_at"]    = time.time() + tokens.get("expires_in", 3600)
+
+#    # Redirect to frontend after successful auth
+#    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+#    return RedirectResponse(f"{FRONTEND_URL}?auth=success")
+    
+#    #return RedirectResponse("http://localhost:5173?auth=success")
+
 @app.get("/auth/callback")
 async def auth_callback(code: str, state: str = None):
-    """Step 2: Exchange code for tokens."""
     import base64
-
-    credentials = base64.b64encode(
+    creds = base64.b64encode(
         f"{YAHOO_CLIENT_ID}:{YAHOO_CLIENT_SECRET}".encode()
     ).decode()
 
@@ -70,29 +105,43 @@ async def auth_callback(code: str, state: str = None):
         resp = await client.post(
             YAHOO_TOKEN_URL,
             headers={
-                "Authorization": f"Basic {credentials}",
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {creds}",
+                "Content-Type": "application/x-www-form-urlencoded"
             },
             data={
-                "grant_type":   "authorization_code",
-                "code":         code,
+                "grant_type": "authorization_code",
+                "code": code,
                 "redirect_uri": YAHOO_REDIRECT_URI,
             },
         )
 
     if resp.status_code != 200:
-        raise HTTPException(400, f"Token exchange failed: {resp.text}")
+        raise HTTPException(400, f"Error: {resp.text}")
 
     tokens = resp.json()
     TOKEN_STORE["access_token"]  = tokens["access_token"]
     TOKEN_STORE["refresh_token"] = tokens.get("refresh_token", "")
     TOKEN_STORE["expires_at"]    = time.time() + tokens.get("expires_in", 3600)
 
-    # Redirect to frontend after successful auth
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    return RedirectResponse(f"{FRONTEND_URL}?auth=success")
-    
-    #return RedirectResponse("http://localhost:5173?auth=success")
+    # Devuelve HTML que cierra la ventana y notifica al frontend
+    return Response(
+        content="""<!DOCTYPE html>
+<html>
+<head><title>Autenticado</title></head>
+<body>
+<script>
+  if (window.opener) {
+    window.opener.postMessage('yahoo_auth_success', '*');
+    window.close();
+  } else {
+    window.location.href = 'https://3men2kbson.github.io/Fantasy-Baseball-Analytics/';
+  }
+</script>
+<p>Autenticado correctamente. Cerrando...</p>
+</body>
+</html>""",
+        media_type="text/html"
+    )
 
 
 @app.get("/auth/status")
