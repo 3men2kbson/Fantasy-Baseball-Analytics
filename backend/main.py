@@ -89,7 +89,10 @@ async def auth_callback(code: str, state: str = None):
     TOKEN_STORE["expires_at"]    = time.time() + tokens.get("expires_in", 3600)
 
     # Redirect to frontend after successful auth
-    return RedirectResponse("http://localhost:5173?auth=success")
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    return RedirectResponse(f"{FRONTEND_URL}?auth=success")
+    
+    #return RedirectResponse("http://localhost:5173?auth=success")
 
 
 @app.get("/auth/status")
