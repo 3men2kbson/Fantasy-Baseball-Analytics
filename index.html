@@ -503,8 +503,28 @@ function hideAuthOverlay() {
   document.getElementById('auth-overlay').style.display = 'none';
 }
 
+//function doLogin() {
+//  window.location.href = `${API}/auth/login`;
+//}
+
 function doLogin() {
-  window.location.href = `${API}/auth/login`;
+  const popup = window.open(
+    `${API}/auth/login`,
+    'yahoo_auth',
+    'width=600,height=700,scrollbars=yes'
+  );
+
+  window.addEventListener('message', async function handler(e) {
+    if (e.data === 'yahoo_auth_success') {
+      window.removeEventListener('message', handler);
+      popup.close();
+      await checkAuth();
+      if (state.authenticated) {
+        hideAuthOverlay();
+        await loadLeagues();
+      }
+    }
+  });
 }
 
 // ─── LEAGUES ─────────────────────────────────────────────────────────────────
