@@ -548,7 +548,7 @@ async def analyze_team(league_key: str, team_key: str):
 
 # ─── HEALTHCHECK ─────────────────────────────────────────────────────────────
 
-@app.get("/", methods=["GET", "HEAD"])
+@app.get("/")
 async def root():
     return {
         "status":  "online",
