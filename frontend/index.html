@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fantasy Baseball Analytics</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #07090f;
+    --surface: #0f1420;
+    --surface2: #161d2e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+    --text: #dde3f0;
+    --muted: #5a6580;
+    --green: #3dffa0;
+    --blue: #5aadff;
+    --amber: #ffb830;
+    --red: #ff5e6b;
+    --purple: #b57bff;
+    --teal: #3dddd0;
+    --font: 'Syne', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── HEADER ─────────────────────────────────────── */
+  header {
+    background: rgba(7,9,15,0.96);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(16px);
+  }
+
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 800; letter-spacing: -.4px; }
+  .logo-gem {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--green), var(--blue));
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+
+  .hdr-center { display: flex; align-items: center; gap: 8px; }
+
+  select {
+    background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text); padding: 7px 12px; border-radius: 8px;
+    font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px; border: none;
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .18s;
+  }
+
+  .btn-yahoo { background: #5f01d1; color: white; }
+  .btn-yahoo:hover { background: #7316e8; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+  .btn-ghost:hover { color: var(--text); background: rgba(255,255,255,.04); }
+  .btn-green { background: rgba(61,255,160,.1); color: var(--green); border: 1px solid rgba(61,255,160,.25); }
+  .btn-green:hover { background: rgba(61,255,160,.18); }
+
+  .dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .badge {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px;
+    font-family: var(--mono); letter-spacing: .5px;
+  }
+  .badge-connected { background: rgba(61,255,160,.12); color: var(--green); border: 1px solid rgba(61,255,160,.25); }
+  .badge-offline    { background: rgba(255,94,107,.12);  color: var(--red);   border: 1px solid rgba(255,94,107,.25); }
+
+  /* ── LAYOUT ─────────────────────────────────────── */
+  .layout { display: flex; min-height: calc(100vh - 58px); }
+
+  /* ── SIDEBAR ─────────────────────────────────────── */
+  .sidebar {
+    width: 210px; min-width: 210px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 16px 0; display: flex; flex-direction: column;
+  }
+  .sidebar-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; padding: 0 20px; margin: 12px 0 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 20px; color: var(--muted); font-size: 14px; font-weight: 500;
+    cursor: pointer; border-left: 3px solid transparent; transition: all .15s;
+  }
+  .nav-item:hover { color: var(--text); background: rgba(255,255,255,.03); }
+  .nav-item.active { color: var(--green); background: rgba(61,255,160,.06); border-left-color: var(--green); }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+  /* ── MAIN ─────────────────────────────────────── */
+  main { flex: 1; padding: 28px; overflow-y: auto; }
+
+  /* ── PANELS ─────────────────────────────────────── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── TITLES ─────────────────────────────────────── */
+  .page-title { font-size: 22px; font-weight: 800; letter-spacing: -.4px; margin-bottom: 2px; }
+  .page-sub   { font-size: 13px; color: var(--muted); }
+  .section-hdr { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+
+  /* ── CARDS ─────────────────────────────────────── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .card-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .9px; margin-bottom: 14px; }
+
+  /* ── GRIDS ─────────────────────────────────────── */
+  .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 16px; }
+  .g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 16px; }
+
+  /* ── STAT MINI CARDS ─────────────────────────────── */
+  .stat-mini { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 14px 18px; }
+  .stat-mini .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 5px; font-weight: 600; }
+  .stat-mini .val { font-size: 26px; font-weight: 800; font-family: var(--mono); }
+  .stat-mini .chg { font-size: 12px; margin-top: 3px; }
+  .up   { color: var(--green); }
+  .down { color: var(--red); }
+
+  /* ── AI INSIGHT BAR ─────────────────────────────── */
+  .ai-bar {
+    background: rgba(61,255,160,.05); border: 1px solid rgba(61,255,160,.18);
+    border-radius: 11px; padding: 14px 18px;
+    display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px;
+    font-size: 13px; line-height: 1.6; color: rgba(221,227,240,.82);
+  }
+  .ai-bar strong { color: var(--green); }
+  .ai-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── STANDINGS TABLE ─────────────────────────────── */
+  .tbl { width: 100%; border-collapse: collapse; }
+  .tbl th { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+  .tbl td { padding: 11px 12px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.03); vertical-align: middle; }
+  .tbl tr:hover td { background: rgba(255,255,255,.02); }
+  .tbl tr.me td { background: rgba(61,255,160,.04); }
+
+  .rank {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; font-family: var(--mono);
+  }
+  .r1 { background: rgba(255,184,48,.15); color: var(--amber); border: 1px solid rgba(255,184,48,.35); }
+  .r2 { background: rgba(90,173,255,.15); color: var(--blue);  border: 1px solid rgba(90,173,255,.35); }
+  .r3 { background: rgba(181,123,255,.15); color: var(--purple); border: 1px solid rgba(181,123,255,.35); }
+  .rn { background: rgba(255,255,255,.06); color: var(--muted); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; font-family: var(--mono);
+  }
+  .pill-green  { background: rgba(61,255,160,.12); color: var(--green); border: 1px solid rgba(61,255,160,.25); }
+  .pill-amber  { background: rgba(255,184,48,.12); color: var(--amber); border: 1px solid rgba(255,184,48,.25); }
+  .pill-red    { background: rgba(255,94,107,.12); color: var(--red);   border: 1px solid rgba(255,94,107,.25); }
+
+  .wbar-bg { width: 72px; height: 5px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 7px; }
+  .wbar-fill { height: 100%; border-radius: 3px; }
+
+  /* ── PLAYER CARDS (FA & Roster) ─────────────────── */
+  .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .pcard {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; transition: all .2s; cursor: pointer;
+  }
+  .pcard:hover { border-color: var(--border2); background: var(--surface2); transform: translateY(-1px); }
+  .pcard.drop { border-color: rgba(255,94,107,.3); }
+
+  .pcard-hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .pcard-left { display: flex; gap: 10px; align-items: center; }
+  .avatar { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+
+  .pname { font-size: 14px; font-weight: 700; }
+  .pmeta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .grade { font-size: 20px; font-weight: 800; font-family: var(--mono); }
+
+  .pstat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; }
+  .pstat-box { background: var(--surface2); border-radius: 7px; padding: 6px 3px; }
+  .pstat-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px; }
+  .pstat-val { font-size: 14px; font-weight: 700; font-family: var(--mono); }
+
+  /* ── FA ROW ─────────────────────────────────────── */
+  .fa-row {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+    padding: 14px 18px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center;
+    transition: all .18s;
+  }
+  .fa-row:hover { border-color: var(--border2); }
+  .fa-rank { font-size: 20px; font-weight: 800; font-family: var(--mono); color: var(--muted); min-width: 26px; }
+  .impact-score { text-align: center; min-width: 68px; }
+  .impact-val { font-size: 26px; font-weight: 800; font-family: var(--mono); }
+  .impact-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── TRADE ─────────────────────────────────────── */
+  .trade-rec { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+
+  /* ── LOADING / ERROR ─────────────────────────────── */
+  .loader { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 14px; }
+  .loader-spin { font-size: 28px; display: block; margin-bottom: 12px; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box { background: rgba(255,94,107,.07); border: 1px solid rgba(255,94,107,.22); border-radius: 11px; padding: 18px 22px; color: var(--red); font-size: 13px; line-height: 1.6; }
+
+  /* ── AUTH OVERLAY ─────────────────────────────────── */
+  .auth-overlay {
+    position: fixed; inset: 0; background: rgba(7,9,15,.96); z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; text-align: center; padding: 24px;
+  }
+  .auth-card { background: var(--surface); border: 1px solid var(--border2); border-radius: 18px; padding: 40px; max-width: 480px; width: 100%; }
+  .auth-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+  .auth-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; line-height: 1.6; }
+
+  /* ── STEP GUIDE ─────────────────────────────────── */
+  .step { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(61,255,160,.12); color: var(--green); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-text { font-size: 13px; line-height: 1.6; color: rgba(221,227,240,.8); }
+  code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 12px; color: var(--blue); }
+
+  /* ── COMPARE ─────────────────────────────────────── */
+  .vs-grid { display: flex; gap: 16px; margin-bottom: 20px; }
+  .vs-card { flex: 1; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .vs-emoji { font-size: 36px; margin-bottom: 6px; }
+  .vs-name  { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .vs-score { font-size: 32px; font-weight: 800; font-family: var(--mono); }
+  .vs-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; }
+
+  .cat-row { display: grid; grid-template-columns: 1fr 140px 1fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  .cat-row:last-child { border-bottom: none; }
+  .cat-lbl { font-size: 11px; color: var(--muted); font-weight: 600; text-align: center; text-transform: uppercase; letter-spacing: .6px; }
+  .cat-val { font-family: var(--mono); font-size: 14px; font-weight: 500; }
+  .cat-val.win { font-weight: 700; }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.09); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- AUTH OVERLAY (shown when not connected) -->
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-card">
+    <div style="font-size:40px; margin-bottom:16px;">⚾</div>
+    <div class="auth-title">Fantasy Baseball Analytics</div>
+    <div class="auth-sub">Conecta tu cuenta de Yahoo Fantasy para ver tus ligas, standings y recomendaciones personalizadas.</div>
+
+    <button class="btn btn-yahoo" style="width:100%; justify-content:center; padding:14px; font-size:15px; margin-bottom:20px;" onclick="doLogin()">
+      🔑 Iniciar sesión con Yahoo
+    </button>
+
+    <div style="text-align:left; border-top:1px solid var(--border); padding-top:20px;">
+      <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; margin-bottom:14px;">
+        Primero configura tu app Yahoo (solo una vez)
+      </div>
+      <div class="step"><div class="step-num">1</div><div class="step-text">Ve a <a href="https://developer.yahoo.com/apps/create/" target="_blank" style="color:var(--blue);">developer.yahoo.com/apps/create</a></div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-text">Nombre de la app: <code>Fantasy Baseball Analytics</code></div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-text">En <strong style="color:var(--text);">API Permissions</strong> activa <code>Fantasy Sports → Read</code></div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-text">Callback URL: <code>http://localhost:8000/auth/callback</code></div></div>
+      <div class="step"><div class="step-num">5</div><div class="step-text">Copia <code>Client ID</code> y <code>Client Secret</code> en tu archivo <code>.env</code></div></div>
+      <div class="step"><div class="step-num">6</div><div class="step-text">Corre <code>uvicorn main:app --reload</code> y vuelve aquí</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-gem">⚾</div>
+    Fantasy Analytics
+  </div>
+
+  <div class="hdr-center">
+    <select id="league-select" onchange="switchLeague(this.value)">
+      <option value="">— Selecciona liga —</option>
+    </select>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span id="auth-badge" class="badge badge-offline">● Desconectado</span>
+    <button class="btn btn-yahoo" onclick="doLogin()" id="login-btn">🔑 Conectar Yahoo</button>
+    <div class="dot-live" id="live-dot" style="display:none;"></div>
+  </div>
+</header>
+
+<!-- APP LAYOUT -->
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-label">Análisis</div>
+    <div class="nav-item active" data-panel="standings"      onclick="showPanel(this)"><span class="nav-icon">🏆</span>Standings</div>
+    <div class="nav-item"        data-panel="compare"        onclick="showPanel(this)"><span class="nav-icon">📊</span>Comparar Equipos</div>
+    <div class="nav-item"        data-panel="my-team"        onclick="showPanel(this)"><span class="nav-icon">🔬</span>Mi Equipo</div>
+    <div class="nav-item"        data-panel="free-agents"    onclick="showPanel(this)"><span class="nav-icon">🆓</span>Agentes Libres</div>
+    <div class="nav-item"        data-panel="trades"         onclick="showPanel(this)"><span class="nav-icon">🔄</span>Trades</div>
+    <div style="border-top:1px solid var(--border); margin:12px 0;"></div>
+    <div class="sidebar-label">Sistema</div>
+    <div class="nav-item"        data-panel="setup"          onclick="showPanel(this)"><span class="nav-icon">⚙️</span>Configuración</div>
+  </nav>
+
+  <main>
+
+    <!-- STANDINGS -->
+    <div id="panel-standings" class="panel active">
+      <div class="section-hdr">
+        <div><div class="page-title">Standings de la Liga</div><div class="page-sub" id="league-info">Selecciona una liga para comenzar</div></div>
+        <button class="btn btn-ghost" onclick="loadStandings()">↻ Actualizar</button>
+      </div>
+      <div id="standings-kpis" class="g4"></div>
+      <div id="ai-standings" class="ai-bar" style="display:none;"></div>
+      <div class="card"><div class="card-title">Clasificación completa · Probabilidades</div><div id="standings-table"><div class="loader"><span class="loader-spin">⌛</span>Cargando standings…</div></div></div>
+      <div class="card" style="margin-top:14px;"><div class="card-title">Z-Score por Categoría — Top 5</div><div id="zscore-section"></div></div>
+    </div>
+
+    <!-- COMPARE -->
+    <div id="panel-compare" class="panel">
+      <div class="section-hdr">
+        <div><div class="page-title">Comparar Equipos</div><div class="page-sub">Head-to-head estadístico</div></div>
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center;">
+        <select id="cmp-a" style="flex:1;" onchange="renderCompare()"></select>
+        <span style="color:var(--muted); font-weight:800;">VS</span>
+        <select id="cmp-b" style="flex:1;" onchange="renderCompare()"></select>
+      </div>
+      <div id="compare-output"></div>
+    </div>
+
+    <!-- MY TEAM -->
+    <div id="panel-my-team" class="panel">
+      <div class="section-hdr">
+        <div><div class="page-title">Mi Equipo</div><div class="page-sub">Análisis de fortalezas, debilidades y recomendaciones</div></div>
+        <select id="my-team-select" onchange="loadMyTeam(this.value)"><option value="">— Elige tu equipo —</option></select>
+      </div>
+      <div id="my-team-analysis" class="ai-bar" style="display:none;"></div>
+      <div id="my-team-roster"><div class="loader"><span>Selecciona tu equipo arriba para ver el roster</span></div></div>
+    </div>
+
+    <!-- FREE AGENTS -->
+    <div id="panel-free-agents" class="panel">
+      <div class="section-hdr">
+        <div><div class="page-title">Agentes Libres</div><div class="page-sub">Ordenados por impacto en tu equipo</div></div>
+        <div style="display:flex; gap:8px;">
+          <select id="fa-pos" onchange="loadFreeAgents()">
+            <option value="B">Todos los bateadores</option>
+            <option value="P">Todos los pitchers</option>
+            <option value="C">C</option>
+            <option value="1B">1B</option>
+            <option value="2B">2B</option>
+            <option value="3B">3B</option>
+            <option value="SS">SS</option>
+            <option value="OF">OF</option>
+            <option value="SP">SP</option>
+            <option value="RP">RP</option>
+          </select>
+          <button class="btn btn-ghost" onclick="loadFreeAgents()">↻</button>
+        </div>
+      </div>
+      <div id="fa-list"><div class="loader"><span class="loader-spin">⌛</span>Cargando agentes libres…</div></div>
+    </div>
+
+    <!-- TRADES -->
+    <div id="panel-trades" class="panel">
+      <div class="section-hdr"><div><div class="page-title">Analizador de Trades</div><div class="page-sub">Evalúa intercambios antes de proponer</div></div></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-title">📥 Analizar un trade manualmente</div>
+          <div style="margin-bottom:12px;">
+            <div style="font-size:12px; color:var(--muted); font-weight:600; margin-bottom:6px;">TÚ DAS (player key)</div>
+            <input id="trade-give" type="text" placeholder="ej: 422.p.10234,422.p.10011" style="width:100%; padding:9px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:8px; color:var(--text); font-family:var(--mono); font-size:12px;">
+          </div>
+          <div style="margin-bottom:16px;">
+            <div style="font-size:12px; color:var(--muted); font-weight:600; margin-bottom:6px;">TÚ RECIBES (player key)</div>
+            <input id="trade-recv" type="text" placeholder="ej: 422.p.10458,422.p.10789" style="width:100%; padding:9px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:8px; color:var(--text); font-family:var(--mono); font-size:12px;">
+          </div>
+          <button class="btn btn-green" style="width:100%; justify-content:center; padding:12px;" onclick="runTradeAnalysis()">
+            ⚡ Analizar Trade
+          </button>
+          <div id="trade-result" style="margin-top:16px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">💡 Cómo encontrar player keys</div>
+          <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:12px;">
+            Los <strong style="color:var(--text);">player keys</strong> tienen el formato <code>422.p.XXXXXX</code> donde 422 es el game_id de MLB en Yahoo.<br><br>
+            Puedes encontrarlos en la respuesta del endpoint <code>/api/team/.../roster</code> o en la URL de Yahoo Fantasy cuando visitas la página de un jugador.
+          </p>
+          <div style="background:var(--surface2); border-radius:8px; padding:14px; font-family:var(--mono); font-size:12px; color:var(--green); line-height:1.8;">
+            GET /api/team/{team_key}/roster<br>
+            <span style="color:var(--muted);"># → incluye player_key por jugador</span><br><br>
+            GET /api/league/{key}/free-agents<br>
+            <span style="color:var(--muted);"># → player_key de agentes libres</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETUP -->
+    <div id="panel-setup" class="panel">
+      <div class="section-hdr"><div><div class="page-title">Configuración</div><div class="page-sub">Setup del servidor Python y credenciales Yahoo</div></div></div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-title">🖥️ Iniciar el backend Python</div>
+          <div style="background:var(--surface2); border-radius:10px; padding:16px; font-family:var(--mono); font-size:12px; line-height:2; margin-bottom:14px;">
+            <span style="color:var(--muted)"># 1. Entra a la carpeta del backend</span><br>
+            <span style="color:var(--green)">$</span> cd fantasy-baseball/backend<br><br>
+            <span style="color:var(--muted)"># 2. Instala dependencias</span><br>
+            <span style="color:var(--green)">$</span> pip install -r requirements.txt<br><br>
+            <span style="color:var(--muted)"># 3. Copia el archivo de variables</span><br>
+            <span style="color:var(--green)">$</span> cp .env.example .env<br><br>
+            <span style="color:var(--muted)"># 4. Edita .env con tu Client ID y Secret</span><br>
+            <span style="color:var(--green)">$</span> nano .env<br><br>
+            <span style="color:var(--muted)"># 5. Corre el servidor</span><br>
+            <span style="color:var(--green)">$</span> uvicorn main:app --reload --port 8000
+          </div>
+          <div id="backend-status">
+            <button class="btn btn-ghost" style="width:100%;" onclick="checkBackend()">🔍 Verificar conexión al backend</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔑 Pasos Yahoo Developer Console</div>
+          <div class="step"><div class="step-num">1</div><div class="step-text">Abre <a href="https://developer.yahoo.com/apps/create/" target="_blank" style="color:var(--blue);">developer.yahoo.com/apps/create</a></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-text"><strong style="color:var(--text);">Application Name:</strong> Fantasy Baseball Analytics</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-text"><strong style="color:var(--text);">Application Type:</strong> Web Application</div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-text"><strong style="color:var(--text);">Homepage URL:</strong> <code>http://localhost:5173</code></div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-text">En <strong style="color:var(--text);">API Permissions</strong> → <code>Fantasy Sports</code> → marca <code>Read</code></div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-text"><strong style="color:var(--text);">Callback URL:</strong> <code>http://localhost:8000/auth/callback</code></div></div>
+          <div class="step"><div class="step-num">7</div><div class="step-text">Haz click en <strong style="color:var(--text);">Create App</strong> y copia el <code>Client ID</code> y <code>Client Secret</code></div></div>
+          <div class="step"><div class="step-num">8</div><div class="step-text">Pégalos en <code>backend/.env</code> y reinicia el servidor</div></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let state = {
+  authenticated: false,
+  leagues: [],
+  currentLeague: null,
+  standings: [],
+  myTeamKey: null,
+};
+
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+async function boot() {
+  // Check if came back from OAuth
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('auth') === 'success') {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  await checkAuth();
+  if (state.authenticated) {
+    hideAuthOverlay();
+    await loadLeagues();
+  }
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch(`${API}/auth/status`);
+    const d = await r.json();
+    state.authenticated = d.authenticated;
+    updateAuthUI();
+  } catch {
+    state.authenticated = false;
+    updateAuthUI();
+  }
+}
+
+function updateAuthUI() {
+  const badge = document.getElementById('auth-badge');
+  const dot   = document.getElementById('live-dot');
+  const btn   = document.getElementById('login-btn');
+  if (state.authenticated) {
+    badge.textContent = '● Conectado';
+    badge.className = 'badge badge-connected';
+    dot.style.display = 'block';
+    btn.style.display = 'none';
+    hideAuthOverlay();
+  } else {
+    badge.textContent = '● Desconectado';
+    badge.className = 'badge badge-offline';
+    dot.style.display = 'none';
+    btn.style.display = 'flex';
+  }
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay').style.display = 'none';
+}
+
+function doLogin() {
+  window.location.href = `${API}/auth/login`;
+}
+
+// ─── LEAGUES ─────────────────────────────────────────────────────────────────
+async function loadLeagues() {
+  try {
+    const r = await fetch(`${API}/api/leagues`);
+    const d = await r.json();
+    state.leagues = d.leagues || [];
+
+    const sel = document.getElementById('league-select');
+    sel.innerHTML = '<option value="">— Selecciona liga —</option>' +
+      state.leagues.map(l =>
+        `<option value="${l.league_key}">${l.name} (${l.season})</option>`
+      ).join('');
+
+    // Auto-select first league
+    if (state.leagues.length > 0) {
+      sel.value = state.leagues[0].league_key;
+      switchLeague(state.leagues[0].league_key);
+    }
+  } catch (e) {
+    console.error('loadLeagues error:', e);
+  }
+}
+
+async function switchLeague(key) {
+  if (!key) return;
+  state.currentLeague = key;
+  const lg = state.leagues.find(l => l.league_key === key);
+  if (lg) {
+    document.getElementById('league-info').textContent =
+      `${lg.name} · Semana ${lg.current_week || '—'} · ${lg.season}`;
+  }
+  await loadStandings();
+}
+
+// ─── STANDINGS ────────────────────────────────────────────────────────────────
+async function loadStandings() {
+  if (!state.currentLeague) return;
+
+  document.getElementById('standings-table').innerHTML =
+    '<div class="loader"><span class="loader-spin">⌛</span>Cargando standings…</div>';
+
+  try {
+    const r = await fetch(`${API}/api/league/${state.currentLeague}/standings`);
+    const d = await r.json();
+    state.standings = d.standings || [];
+
+    renderStandingsKPIs();
+    renderStandingsTable();
+    populateTeamSelects();
+    renderZScores();
+  } catch (e) {
+    document.getElementById('standings-table').innerHTML =
+      `<div class="error-box">Error cargando standings: ${e.message}<br>Asegúrate de que el backend Python está corriendo en puerto 8000.</div>`;
+  }
+}
+
+function renderStandingsKPIs() {
+  const myTeam = state.standings.find(t => t.isMe) || state.standings[0];
+  if (!myTeam) return;
+
+  const totalGames = myTeam.wins + myTeam.losses + myTeam.ties;
+  const kpis = [
+    { lbl: 'Mi Posición', val: `#${myTeam.rank}`, chg: '', color: 'var(--blue)' },
+    { lbl: 'Prob. Playoff', val: `${Math.round(myTeam.playoff_prob * 100)}%`, chg: '', color: 'var(--green)' },
+    { lbl: 'Record', val: `${myTeam.wins}-${myTeam.losses}-${myTeam.ties}`, chg: '', color: 'var(--text)' },
+    { lbl: 'Win%', val: myTeam.win_pct.toFixed(3), chg: '', color: 'var(--amber)' },
+  ];
+
+  document.getElementById('standings-kpis').innerHTML = kpis.map(k =>
+    `<div class="stat-mini">
+      <div class="lbl">${k.lbl}</div>
+      <div class="val" style="color:${k.color};">${k.val}</div>
+     </div>`
+  ).join('');
+}
+
+function renderStandingsTable() {
+  const rows = state.standings.map((t, i) => {
+    const rankClass = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
+    const pp = Math.round(t.playoff_prob * 100);
+    const cp = Math.round(t.champion_prob * 100);
+    const ppClass = pp >= 65 ? 'pill-green' : pp >= 35 ? 'pill-amber' : 'pill-red';
+    const cpClass = cp >= 40 ? 'pill-green' : cp >= 15 ? 'pill-amber' : 'pill-red';
+
+    return `<tr class="${t.isMe ? 'me' : ''}">
+      <td><span class="rank ${rankClass}">${t.rank}</span></td>
+      <td><strong>${t.name}</strong>${t.isMe ? ' <span style="font-size:10px;color:var(--green);font-family:var(--mono);">●TÚ</span>' : ''}</td>
+      <td style="font-family:var(--mono); font-weight:600;">${t.wins}-${t.losses}-${t.ties}</td>
+      <td>
+        <div style="display:flex;align-items:center;">
+          <div class="wbar-bg"><div class="wbar-fill" style="width:${t.win_pct*100}%;background:var(--green);"></div></div>
+          <span style="font-family:var(--mono);font-size:13px;">${t.win_pct.toFixed(3)}</span>
+        </div>
+      </td>
+      <td style="font-family:var(--mono);color:var(--amber);font-weight:600;">${t.points_for.toLocaleString()}</td>
+      <td><span class="pill ${cpClass}">${cp}%</span></td>
+      <td><span class="pill ${ppClass}">${pp}%</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('standings-table').innerHTML = `
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>#</th><th>Equipo</th><th>W-L-T</th><th>Win%</th>
+          <th>Puntos</th><th>Prob. 1°</th><th>Prob. Playoff</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderZScores() {
+  if (state.standings.length === 0) return;
+  const top5 = state.standings.slice(0, 5);
+  const colors = ['var(--green)', 'var(--blue)', 'var(--amber)', 'var(--purple)', 'var(--teal)'];
+
+  // Use win_pct as proxy for overall strength
+  const maxWin = Math.max(...top5.map(t => t.win_pct));
+  const minWin = Math.min(...top5.map(t => t.win_pct));
+  const range  = maxWin - minWin || 1;
+
+  document.getElementById('zscore-section').innerHTML = `
+    <div style="margin-bottom:12px; font-size:12px; color:var(--muted);">
+      Representación relativa basada en win% (datos de stats detallados disponibles con API conectada).
+    </div>
+    ${top5.map((t, i) => {
+      const pct = Math.round(((t.win_pct - minWin) / range) * 80 + 10);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:22px;text-align:right;font-size:11px;color:var(--muted);font-weight:700;">#${t.rank}</div>
+        <div style="font-size:13px;font-weight:600;width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.name}</div>
+        <div style="flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${colors[i]};border-radius:4px;transition:width 1s;"></div>
+        </div>
+        <div style="font-size:12px;font-family:var(--mono);color:var(--muted);min-width:42px;text-align:right;">${t.win_pct.toFixed(3)}</div>
+      </div>`;
+    }).join('')}`;
+}
+
+// ─── COMPARE ─────────────────────────────────────────────────────────────────
+function populateTeamSelects() {
+  const opts = state.standings.map(t =>
+    `<option value="${t.team_key}">${t.name}</option>`
+  ).join('');
+  document.getElementById('cmp-a').innerHTML = opts;
+  document.getElementById('cmp-b').innerHTML = opts;
+  if (state.standings.length > 1) {
+    document.getElementById('cmp-b').selectedIndex = 1;
+  }
+
+  // Populate my-team select
+  const myTeamSel = document.getElementById('my-team-select');
+  myTeamSel.innerHTML = '<option value="">— Elige tu equipo —</option>' +
+    state.standings.map(t => `<option value="${t.team_key}">${t.name}</option>`).join('');
+
+  renderCompare();
+}
+
+function renderCompare() {
+  const ai = document.getElementById('cmp-a').value;
+  const bi = document.getElementById('cmp-b').value;
+  const teamA = state.standings.find(t => t.team_key === ai);
+  const teamB = state.standings.find(t => t.team_key === bi);
+  if (!teamA || !teamB) return;
+
+  const cats = [
+    { lbl: 'Win%',   va: teamA.win_pct,   vb: teamB.win_pct,   fmt: v => v.toFixed(3), higher: true },
+    { lbl: 'Puntos', va: teamA.points_for, vb: teamB.points_for, fmt: v => v.toLocaleString(), higher: true },
+    { lbl: 'Wins',   va: teamA.wins,       vb: teamB.wins,       fmt: v => v, higher: true },
+    { lbl: 'Losses', va: teamA.losses,     vb: teamB.losses,     fmt: v => v, higher: false },
+    { lbl: 'Prob. Playoff', va: teamA.playoff_prob, vb: teamB.playoff_prob, fmt: v => `${Math.round(v*100)}%`, higher: true },
+    { lbl: 'Prob. 1°', va: teamA.champion_prob, vb: teamB.champion_prob, fmt: v => `${Math.round(v*100)}%`, higher: true },
+  ];
+
+  let aW = 0, bW = 0;
+  const catRows = cats.map(c => {
+    const aw = c.higher ? c.va > c.vb : c.va < c.vb;
+    const bw = c.higher ? c.vb > c.va : c.vb < c.va;
+    if (aw) aW++; if (bw) bW++;
+    return `<div class="cat-row">
+      <div class="cat-val ${aw ? 'win' : ''}" style="${aw ? 'color:var(--green)' : 'color:var(--muted)'}">${c.fmt(c.va)}</div>
+      <div class="cat-lbl">${c.lbl}</div>
+      <div class="cat-val ${bw ? 'win' : ''}" style="${bw ? 'color:var(--blue)' : 'color:var(--muted)'}; text-align:right;">${c.fmt(c.vb)}</div>
+    </div>`;
+  }).join('');
+
+  const winner  = aW > bW ? teamA : bW > aW ? teamB : null;
+  const wProb   = winner ? Math.min(95, 50 + Math.abs(aW - bW) * 7) : 50;
+  const aProb   = aW >= bW ? wProb : 100 - wProb;
+  const bProb   = bW >= aW ? wProb : 100 - wProb;
+
+  document.getElementById('compare-output').innerHTML = `
+    <div class="vs-grid">
+      <div class="vs-card">
+        <div class="vs-score" style="color:var(--green);">${aW}</div>
+        <div class="vs-label">categorías</div>
+        <div class="vs-name" style="margin-top:10px;">${teamA.name}</div>
+        <span class="pill ${aW >= bW ? 'pill-green' : 'pill-red'}" style="margin-top:10px;">${aProb}% gana</span>
+      </div>
+      <div style="display:flex;align-items:center;font-size:28px;font-weight:800;color:var(--muted);">VS</div>
+      <div class="vs-card">
+        <div class="vs-score" style="color:var(--blue);">${bW}</div>
+        <div class="vs-label">categorías</div>
+        <div class="vs-name" style="margin-top:10px;">${teamB.name}</div>
+        <span class="pill ${bW >= aW ? 'pill-green' : 'pill-red'}" style="margin-top:10px;">${bProb}% gana</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Comparación por categoría</div>
+      <div>${catRows}</div>
+    </div>`;
+}
+
+// ─── MY TEAM ─────────────────────────────────────────────────────────────────
+async function loadMyTeam(teamKey) {
+  if (!teamKey) return;
+  state.myTeamKey = teamKey;
+
+  document.getElementById('my-team-roster').innerHTML =
+    '<div class="loader"><span class="loader-spin">⌛</span>Cargando roster…</div>';
+
+  try {
+    // Load analysis
+    const ar = await fetch(`${API}/api/league/${state.currentLeague}/team/${teamKey}/analysis`);
+    const ad = await ar.json();
+
+    const analysisDiv = document.getElementById('my-team-analysis');
+    analysisDiv.style.display = 'flex';
+    analysisDiv.innerHTML = `
+      <div class="ai-icon">🤖</div>
+      <div>
+        <strong>Análisis de ${ad.team_name}</strong> · Posición ${ad.rank}/${ad.num_teams}<br>
+        ${ad.weaknesses.length > 0
+          ? `<strong>Debilidades detectadas:</strong> ${ad.weaknesses.join(' · ')}<br>`
+          : 'Sin debilidades críticas detectadas.<br>'}
+        Prob. Playoff: <strong>${Math.round(ad.playoff_prob * 100)}%</strong> ·
+        Prob. Campeón: <strong>${Math.round(ad.champion_prob * 100)}%</strong>
+      </div>`;
+
+    // Load roster
+    const rr = await fetch(`${API}/api/team/${teamKey}/roster`);
+    const rd = await rr.json();
+
+    renderRoster(rd.players || [], ad.recommendations || []);
+  } catch (e) {
+    document.getElementById('my-team-roster').innerHTML =
+      `<div class="error-box">Error: ${e.message}</div>`;
+  }
+}
+
+function renderRoster(players, recs) {
+  if (players.length === 0) {
+    document.getElementById('my-team-roster').innerHTML =
+      '<div class="loader">No se encontraron jugadores en el roster.</div>';
+    return;
+  }
+
+  const cards = players.map(p =>
+    `<div class="pcard">
+      <div class="pcard-hdr">
+        <div class="pcard-left">
+          <div class="avatar" style="background:rgba(90,173,255,.15);color:var(--blue);font-size:11px;">
+            ${p.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+          </div>
+          <div>
+            <div class="pname">${p.name}</div>
+            <div class="pmeta">${p.position} · ${p.team} ${p.status !== 'A' ? `<span style="color:var(--red);">· ${p.status}</span>` : ''}</div>
+          </div>
+        </div>
+      </div>
+     </div>`
+  ).join('');
+
+  const recCards = recs.length > 0 ? `
+    <div style="margin-top:20px;">
+      <div class="card-title" style="margin-bottom:12px;">💡 Recomendaciones</div>
+      ${recs.map(r => `
+        <div class="trade-rec">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span class="pill ${r.priority === 'high' ? 'pill-red' : 'pill-amber'}">${r.priority === 'high' ? '🔥 URGENTE' : '💡 SUGERENCIA'}</span>
+            <span style="font-size:12px;color:var(--muted);">${r.type.toUpperCase()} · ${r.position}</span>
+          </div>
+          <div style="font-size:13px;color:rgba(221,227,240,.85);">${r.action}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  document.getElementById('my-team-roster').innerHTML = `
+    <div class="player-grid">${cards}</div>${recCards}`;
+}
+
+// ─── FREE AGENTS ─────────────────────────────────────────────────────────────
+async function loadFreeAgents() {
+  if (!state.currentLeague) return;
+  const pos = document.getElementById('fa-pos').value;
+
+  document.getElementById('fa-list').innerHTML =
+    '<div class="loader"><span class="loader-spin">⌛</span>Buscando agentes libres…</div>';
+
+  try {
+    const r = await fetch(`${API}/api/league/${state.currentLeague}/free-agents?position=${pos}&count=20`);
+    const d = await r.json();
+    const agents = d.free_agents || [];
+
+    if (agents.length === 0) {
+      document.getElementById('fa-list').innerHTML =
+        '<div class="loader">No se encontraron agentes libres para esta posición.</div>';
+      return;
+    }
+
+    document.getElementById('fa-list').innerHTML = agents.map((fa, i) => {
+      const impColor = fa.percent_owned >= 60 ? 'var(--red)' : fa.percent_owned >= 30 ? 'var(--amber)' : 'var(--green)';
+      const initials = fa.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+
+      return `<div class="fa-row">
+        <div class="fa-rank">#${i+1}</div>
+        <div class="avatar" style="background:rgba(61,255,160,.12);color:var(--green);font-size:11px;width:40px;height:40px;border-radius:9px;flex-shrink:0;">${initials}</div>
+        <div style="flex:1;">
+          <div style="font-size:15px;font-weight:700;margin-bottom:3px;">${fa.name}
+            <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">${fa.position} · ${fa.team}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">
+            % dueño: <strong style="color:var(--text);">${fa.percent_owned.toFixed(1)}%</strong>
+          </div>
+        </div>
+        <div class="impact-score">
+          <div class="impact-val" style="color:${impColor};">${fa.percent_owned.toFixed(0)}</div>
+          <div class="impact-lbl">% dueño</div>
+        </div>
+        <button class="btn btn-green" style="font-size:12px;padding:7px 12px;" onclick="claimPlayer('${fa.name}')">+ Reclamar</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('fa-list').innerHTML =
+      `<div class="error-box">Error: ${e.message}</div>`;
+  }
+}
+
+// ─── TRADE ANALYSIS ───────────────────────────────────────────────────────────
+async function runTradeAnalysis() {
+  const give = document.getElementById('trade-give').value.split(',').map(s => s.trim()).filter(Boolean);
+  const recv = document.getElementById('trade-recv').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (!give.length || !recv.length) {
+    document.getElementById('trade-result').innerHTML =
+      '<div class="error-box">Ingresa al menos un player key en cada campo.</div>';
+    return;
+  }
+
+  document.getElementById('trade-result').innerHTML =
+    '<div class="loader"><span class="loader-spin">⌛</span>Analizando…</div>';
+
+  try {
+    const r = await fetch(`${API}/api/trade/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ give, receive: recv, league_key: state.currentLeague }),
+    });
+    const d = await r.json();
+
+    const verdictColor = d.fairness === 'favorable' ? 'var(--green)' : d.fairness === 'fair' ? 'var(--amber)' : 'var(--red)';
+    document.getElementById('trade-result').innerHTML = `
+      <div style="background:rgba(61,255,160,.06);border:1px solid rgba(61,255,160,.18);border-radius:10px;padding:16px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+          <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;">TÚ DAS</div>
+            <div style="font-size:15px;font-weight:700;">${d.give_players.map(p => p.name).join(', ')}</div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--red);">Score: ${d.give_score}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">TÚ RECIBES</div>
+            <div style="font-size:15px;font-weight:700;">${d.receive_players.map(p => p.name).join(', ')}</div>
+            <div style="font-family:var(--mono);font-size:13px;color:var(--green);">Score: ${d.receive_score}</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+          <span class="pill" style="background:${verdictColor}22;color:${verdictColor};border:1px solid ${verdictColor}44;margin-bottom:8px;display:inline-flex;">
+            ${d.fairness === 'favorable' ? '✓ Favorable para ti' : d.fairness === 'fair' ? '⚖ Trade equilibrado' : '⚠ Desfavorable'}
+          </span>
+          <div style="font-size:13px;color:rgba(221,227,240,.85);line-height:1.6;">${d.verdict}</div>
+        </div>
+      </div>`;
+  } catch (e) {
+    document.getElementById('trade-result').innerHTML =
+      `<div class="error-box">Error: ${e.message}</div>`;
+  }
+}
+
+// ─── MISC ─────────────────────────────────────────────────────────────────────
+function showPanel(el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  const panelName = el.dataset.panel;
+  document.getElementById('panel-' + panelName).classList.add('active');
+
+  if (panelName === 'free-agents' && state.currentLeague) loadFreeAgents();
+}
+
+async function checkBackend() {
+  try {
+    const r = await fetch(`${API}/`);
+    const d = await r.json();
+    document.getElementById('backend-status').innerHTML =
+      `<div class="ai-bar">✅ Backend online · ${d.service}</div>`;
+  } catch {
+    document.getElementById('backend-status').innerHTML =
+      `<div class="error-box">❌ Backend no disponible. Corre: <code>uvicorn main:app --reload</code></div>`;
+  }
+}
+
+function claimPlayer(name) {
+  alert(`✅ Claim registrado para ${name}\n\nEn producción esto envía el waiver claim a través de Yahoo API.`);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+boot();
+</script>
+</body>
+</html>
