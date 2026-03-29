@@ -9,7 +9,7 @@ load_dotenv()
 
 app = FastAPI(title="Fantasy Baseball Analytics API", version="1.0.0")
 
-# ─── CORS — debe ir PRIMERO antes de cualquier ruta ───────────────────────────
+# ─── CORS ─────────────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = [
     "https://3men2kbson.github.io",
     "http://localhost:5173",
@@ -26,7 +26,6 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# ─── CORS en respuestas de error (FastAPI no las cubre por defecto) ────────────
 @app.middleware("http")
 async def add_cors_on_error(request: Request, call_next):
     origin = request.headers.get("origin", "")
@@ -48,6 +47,14 @@ YAHOO_AUTH_URL      = "https://api.login.yahoo.com/oauth2/request_auth"
 YAHOO_TOKEN_URL     = "https://api.login.yahoo.com/oauth2/get_token"
 
 TOKEN_STORE: dict = {}
+
+# ─── STAT ID MAP — Yahoo MLB H2H Categories ───────────────────────────────────
+STAT_MAP = {
+    "60": "H/AB", "7": "R", "12": "HR", "13": "RBI", "16": "SB",
+    "3": "AVG", "50": "OPS", "55": "OBP", "57": "SLG",
+    "28": "IP", "32": "W", "36": "SV", "37": "HLD", "42": "K",
+    "26": "ERA", "27": "WHIP", "56": "K/9",
+}
 
 # ─── HEALTHCHECK ──────────────────────────────────────────────────────────────
 @app.api_route("/", methods=["GET", "HEAD"])
@@ -199,22 +206,18 @@ async def get_leagues():
         games     = user_data[1]["games"]
 
         for i in range(games["count"]):
-            game_entry   = games[str(i)]["game"]
-            # game_entry[1] puede ser dict o lista según la versión de Yahoo API
-            game_meta    = game_entry[1]
+            game_entry = games[str(i)]["game"]
+            game_meta  = game_entry[1]
             if isinstance(game_meta, list):
                 game_meta = {k: v for d in game_meta for k, v in d.items()}
 
             game_leagues = game_meta.get("leagues", {})
-
-            # También puede venir como lista
             if isinstance(game_leagues, list):
                 game_leagues = {k: v for d in game_leagues for k, v in d.items()}
 
             for j in range(game_leagues.get("count", 0)):
                 lg_entry = game_leagues[str(j)]["league"]
-                # league puede ser lista o dict
-                lg = lg_entry[0] if isinstance(lg_entry, list) else lg_entry
+                lg       = lg_entry[0] if isinstance(lg_entry, list) else lg_entry
                 leagues.append({
                     "league_key":   lg.get("league_key", ""),
                     "league_id":    lg.get("league_id", ""),
@@ -229,6 +232,7 @@ async def get_leagues():
 
     return {"leagues": leagues}
 
+
 # ─── STANDINGS ────────────────────────────────────────────────────────────────
 @app.get("/api/league/{league_key}/standings")
 async def get_standings(league_key: str):
@@ -242,36 +246,21 @@ async def get_standings(league_key: str):
     standings = []
     try:
         league_data = data["fantasy_content"]["league"]
-        # league puede ser lista o dict según versión de Yahoo API
-        if isinstance(league_data, list):
-            league_meta = league_data[1]
-        else:
-            league_meta = league_data
-    
-        teams_data = league_meta["standings"][0]["teams"]
-        num_teams  = teams_data["count"]
-    
+        league_meta = league_data[1] if isinstance(league_data, list) else league_data
+        teams_data  = league_meta["standings"][0]["teams"]
+        num_teams   = teams_data["count"]
+
         for i in range(num_teams):
-            team = teams_data[str(i)]["team"]
-    
-            # team es una lista: [0]=info, [1]=standings
+            team         = teams_data[str(i)]["team"]
             info         = team[0]
             team_outcome = team[1]
-    
-            # team_outcome puede ser dict directo o tener wrapper
-            if isinstance(team_outcome, dict):
-                standing = team_outcome.get("team_standings", team_outcome)
-            else:
-                standing = {}
-    
-            name     = next((x["name"] for x in info
-                             if isinstance(x, dict) and "name" in x), "Unknown")
-            team_key = next((x["team_key"] for x in info
-                             if isinstance(x, dict) and "team_key" in x), "")
+            standing     = team_outcome.get("team_standings", team_outcome) if isinstance(team_outcome, dict) else {}
+
+            name     = next((x["name"] for x in info if isinstance(x, dict) and "name" in x), "Unknown")
+            team_key = next((x["team_key"] for x in info if isinstance(x, dict) and "team_key" in x), "")
             logo     = next((x["team_logos"][0]["team_logo"]["url"]
-                             for x in info
-                             if isinstance(x, dict) and "team_logos" in x), "")
-    
+                             for x in info if isinstance(x, dict) and "team_logos" in x), "")
+
             outcomes    = standing.get("outcome_totals", {})
             wins        = int(outcomes.get("wins", 0))
             losses      = int(outcomes.get("losses", 0))
@@ -280,7 +269,7 @@ async def get_standings(league_key: str):
             pts         = float(standing.get("points_for", 0))
             total_games = wins + losses + ties
             win_pct     = (wins + ties * 0.5) / total_games if total_games > 0 else 0.0
-    
+
             standings.append({
                 "team_key":      team_key,
                 "name":          name,
@@ -313,6 +302,219 @@ def _calc_champion_prob(rank, num_teams, wins, losses):
     win_rate = wins / total if total > 0 else 0.5
     x        = (2 - rank) * 1.2 + (win_rate - 0.5) * 5
     return round(min(0.90, max(0.01, (1 / (1 + math.exp(-x))) / (num_teams * 0.3))), 3)
+
+
+# ─── MATCHUPS SEMANA ACTUAL ───────────────────────────────────────────────────
+@app.get("/api/league/{league_key}/scoreboard")
+async def get_scoreboard(league_key: str, week: int = None):
+    """
+    Obtiene todos los matchups de la semana actual (o la semana indicada).
+    Incluye estadísticas por categoría H2H para cada equipo.
+    """
+    path = f"/league/{league_key}/scoreboard"
+    if week:
+        path += f";week={week}"
+
+    try:
+        data = await yahoo_get(path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error obteniendo scoreboard: {str(e)}")
+
+    matchups   = []
+    week_num   = None
+
+    try:
+        league_data  = data["fantasy_content"]["league"]
+        league_meta  = league_data[1] if isinstance(league_data, list) else league_data
+        scoreboard   = league_meta.get("scoreboard", {})
+        week_num     = scoreboard.get("week")
+        matchups_raw = scoreboard.get("matchups", {})
+
+        count = matchups_raw.get("count", 0) if isinstance(matchups_raw, dict) else 0
+
+        for i in range(count):
+            m_entry  = matchups_raw[str(i)]["matchup"]
+            m_week   = m_entry.get("week")
+            m_status = m_entry.get("status", "postevent")
+            teams    = m_entry.get("teams", {})
+
+            parsed_teams = []
+            for t_idx in range(teams.get("count", 2)):
+                t_data   = teams[str(t_idx)]["team"]
+                t_info   = t_data[0]
+                t_name   = next((x["name"] for x in t_info if isinstance(x, dict) and "name" in x), "Unknown")
+                t_key    = next((x["team_key"] for x in t_info if isinstance(x, dict) and "team_key" in x), "")
+                t_logo   = next((x["team_logos"][0]["team_logo"]["url"]
+                                 for x in t_info if isinstance(x, dict) and "team_logos" in x), "")
+
+                # Stats del matchup
+                team_stats = {}
+                win_cats   = 0
+                loss_cats  = 0
+
+                if len(t_data) > 1:
+                    stats_section = t_data[1]
+                    if isinstance(stats_section, dict):
+                        raw_stats = stats_section.get("team_stats", {}).get("stats", [])
+                        for s in raw_stats:
+                            if isinstance(s.get("stat"), dict):
+                                sid   = s["stat"].get("stat_id", "")
+                                sval  = s["stat"].get("value", "-")
+                                sname = STAT_MAP.get(str(sid), f"stat_{sid}")
+                                team_stats[sname] = sval
+
+                        # Categorías ganadas/perdidas
+                        stat_wins = stats_section.get("team_stats", {}).get("stat_winners", [])
+                        for sw in stat_wins:
+                            if isinstance(sw.get("stat_winner"), dict):
+                                winner_key = sw["stat_winner"].get("winner_team_key", "")
+                                is_tied    = sw["stat_winner"].get("is_tied", "0")
+                                if is_tied == "1":
+                                    pass
+                                elif winner_key == t_key:
+                                    win_cats += 1
+                                else:
+                                    loss_cats += 1
+
+                parsed_teams.append({
+                    "team_key":  t_key,
+                    "name":      t_name,
+                    "logo":      t_logo,
+                    "stats":     team_stats,
+                    "win_cats":  win_cats,
+                    "loss_cats": loss_cats,
+                })
+
+            matchups.append({
+                "week":    m_week or week_num,
+                "status":  m_status,
+                "teams":   parsed_teams,
+                "winner":  _matchup_winner(parsed_teams),
+            })
+
+    except (KeyError, TypeError, IndexError) as e:
+        raise HTTPException(500, f"Error parseando scoreboard: {str(e)} | Raw: {str(data)[:800]}")
+
+    return {
+        "week":     week_num,
+        "matchups": matchups,
+    }
+
+
+def _matchup_winner(teams: list) -> str:
+    """Determina el ganador del matchup por categorías."""
+    if len(teams) < 2:
+        return "unknown"
+    a, b = teams[0], teams[1]
+    if a["win_cats"] > b["win_cats"]:
+        return a["team_key"]
+    elif b["win_cats"] > a["win_cats"]:
+        return b["team_key"]
+    return "tie"
+
+
+# ─── HISTORIAL DE MATCHUPS ────────────────────────────────────────────────────
+@app.get("/api/league/{league_key}/matchups/history")
+async def get_matchup_history(league_key: str, team_key: str, weeks: int = 10):
+    """
+    Devuelve el historial de matchups de un equipo específico.
+    Incluye categorías ganadas/perdidas por semana.
+    """
+    history = []
+    errors  = []
+
+    for w in range(1, weeks + 1):
+        try:
+            data         = await yahoo_get(f"/league/{league_key}/scoreboard;week={w}")
+            league_data  = data["fantasy_content"]["league"]
+            league_meta  = league_data[1] if isinstance(league_data, list) else league_data
+            scoreboard   = league_meta.get("scoreboard", {})
+            matchups_raw = scoreboard.get("matchups", {})
+            count        = matchups_raw.get("count", 0) if isinstance(matchups_raw, dict) else 0
+
+            for i in range(count):
+                m_entry = matchups_raw[str(i)]["matchup"]
+                teams   = m_entry.get("teams", {})
+                team_keys_in_match = []
+
+                parsed = []
+                for t_idx in range(teams.get("count", 2)):
+                    t_data = teams[str(t_idx)]["team"]
+                    t_info = t_data[0]
+                    t_key  = next((x["team_key"] for x in t_info if isinstance(x, dict) and "team_key" in x), "")
+                    t_name = next((x["name"] for x in t_info if isinstance(x, dict) and "name" in x), "Unknown")
+                    team_keys_in_match.append(t_key)
+
+                    win_cats  = 0
+                    loss_cats = 0
+                    team_stats = {}
+
+                    if len(t_data) > 1:
+                        stats_section = t_data[1]
+                        if isinstance(stats_section, dict):
+                            raw_stats = stats_section.get("team_stats", {}).get("stats", [])
+                            for s in raw_stats:
+                                if isinstance(s.get("stat"), dict):
+                                    sid   = s["stat"].get("stat_id", "")
+                                    sval  = s["stat"].get("value", "-")
+                                    sname = STAT_MAP.get(str(sid), f"stat_{sid}")
+                                    team_stats[sname] = sval
+
+                            stat_wins = stats_section.get("team_stats", {}).get("stat_winners", [])
+                            for sw in stat_wins:
+                                if isinstance(sw.get("stat_winner"), dict):
+                                    winner_key = sw["stat_winner"].get("winner_team_key", "")
+                                    is_tied    = sw["stat_winner"].get("is_tied", "0")
+                                    if is_tied != "1":
+                                        if winner_key == t_key:
+                                            win_cats += 1
+                                        else:
+                                            loss_cats += 1
+
+                    parsed.append({
+                        "team_key":  t_key,
+                        "name":      t_name,
+                        "stats":     team_stats,
+                        "win_cats":  win_cats,
+                        "loss_cats": loss_cats,
+                    })
+
+                # Solo incluir si el equipo buscado está en este matchup
+                if team_key in team_keys_in_match:
+                    my_team  = next((t for t in parsed if t["team_key"] == team_key), None)
+                    opp_team = next((t for t in parsed if t["team_key"] != team_key), None)
+                    if my_team and opp_team:
+                        if my_team["win_cats"] > opp_team["win_cats"]:
+                            result = "W"
+                        elif my_team["win_cats"] < opp_team["win_cats"]:
+                            result = "L"
+                        else:
+                            result = "T"
+
+                        history.append({
+                            "week":          w,
+                            "result":        result,
+                            "my_cats_won":   my_team["win_cats"],
+                            "opp_cats_won":  opp_team["win_cats"],
+                            "opponent":      opp_team["name"],
+                            "opponent_key":  opp_team["team_key"],
+                            "my_stats":      my_team["stats"],
+                            "opp_stats":     opp_team["stats"],
+                        })
+                    break
+
+        except Exception as e:
+            errors.append({"week": w, "error": str(e)})
+            continue
+
+    return {
+        "team_key": team_key,
+        "history":  history,
+        "weeks_fetched": len(history),
+        "errors":   errors,
+    }
 
 
 # ─── TEAM ROSTER ──────────────────────────────────────────────────────────────
