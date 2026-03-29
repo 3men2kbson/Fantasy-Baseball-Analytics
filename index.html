@@ -561,6 +561,21 @@ async function switchLeague(key) {
   await loadStandings();
 }
 
+function setMyTeam(teamKey) {
+  if (!teamKey || !state.currentLeague) return;
+  // Guarda por liga — así cada liga recuerda tu equipo
+  localStorage.setItem(`myTeam_${state.currentLeague}`, teamKey);
+  renderStandingsTable();
+  renderStandingsKPIs();
+
+  // Actualiza el selector de Mi Equipo en el panel de roster
+  const myTeamSel = document.getElementById('my-team-select');
+  if (myTeamSel) {
+    myTeamSel.value = teamKey;
+    loadMyTeam(teamKey);
+  }
+}
+
 // ─── STANDINGS ────────────────────────────────────────────────────────────────
 async function loadStandings() {
   if (!state.currentLeague) return;
@@ -584,15 +599,17 @@ async function loadStandings() {
 }
 
 function renderStandingsKPIs() {
-  const myTeam = state.standings.find(t => t.isMe) || state.standings[0];
+  const myTeamKey = localStorage.getItem(`myTeam_${state.currentLeague}`);
+  const myTeam    = state.standings.find(t => t.team_key === myTeamKey)
+                    || state.standings[0];
   if (!myTeam) return;
 
-  const totalGames = myTeam.wins + myTeam.losses + myTeam.ties;
-  const kpis = [
-    { lbl: 'Mi Posición', val: `#${myTeam.rank}`, chg: '', color: 'var(--blue)' },
-    { lbl: 'Prob. Playoff', val: `${Math.round(myTeam.playoff_prob * 100)}%`, chg: '', color: 'var(--green)' },
-    { lbl: 'Record', val: `${myTeam.wins}-${myTeam.losses}-${myTeam.ties}`, chg: '', color: 'var(--text)' },
-    { lbl: 'Win%', val: myTeam.win_pct.toFixed(3), chg: '', color: 'var(--amber)' },
+  const total = myTeam.wins + myTeam.losses + myTeam.ties;
+  const kpis  = [
+    { lbl: 'Mi Posición',    val: `#${myTeam.rank}`,                         color: 'var(--blue)'  },
+    { lbl: 'Prob. Playoff',  val: `${Math.round(myTeam.playoff_prob * 100)}%`, color: 'var(--green)' },
+    { lbl: 'Record',         val: total > 0 ? `${myTeam.wins}-${myTeam.losses}-${myTeam.ties}` : '—', color: 'var(--text)'  },
+    { lbl: 'Win%',           val: total > 0 ? myTeam.win_pct.toFixed(3) : '—', color: 'var(--amber)' },
   ];
 
   document.getElementById('standings-kpis').innerHTML = kpis.map(k =>
@@ -604,30 +621,55 @@ function renderStandingsKPIs() {
 }
 
 function renderStandingsTable() {
-  const rows = state.standings.map((t, i) => {
-    const rankClass = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
-    const pp = Math.round(t.playoff_prob * 100);
-    const cp = Math.round(t.champion_prob * 100);
-    const ppClass = pp >= 65 ? 'pill-green' : pp >= 35 ? 'pill-amber' : 'pill-red';
-    const cpClass = cp >= 40 ? 'pill-green' : cp >= 15 ? 'pill-amber' : 'pill-red';
+  // Selector de mi equipo
+  const myTeamKey = localStorage.getItem(`myTeam_${state.currentLeague}`) || '';
 
-    return `<tr class="${t.isMe ? 'me' : ''}">
+  const rows = state.standings.map((t, i) => {
+    const isMe       = t.team_key === myTeamKey;
+    const rankClass  = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
+    const pp         = Math.round(t.playoff_prob * 100);
+    const cp         = Math.round(t.champion_prob * 100);
+    const ppClass    = pp >= 65 ? 'pill-green' : pp >= 35 ? 'pill-amber' : 'pill-red';
+    const cpClass    = cp >= 40 ? 'pill-green' : cp >= 15 ? 'pill-amber' : 'pill-red';
+    const total      = t.wins + t.losses + t.ties;
+    const record     = total > 0 ? `${t.wins}-${t.losses}-${t.ties}` : '—';
+    const winPct     = total > 0 ? t.win_pct.toFixed(3) : '—';
+
+    return `<tr class="${isMe ? 'me' : ''}">
       <td><span class="rank ${rankClass}">${t.rank}</span></td>
-      <td><strong>${t.name}</strong>${t.isMe ? ' <span style="font-size:10px;color:var(--green);font-family:var(--mono);">●TÚ</span>' : ''}</td>
-      <td style="font-family:var(--mono); font-weight:600;">${t.wins}-${t.losses}-${t.ties}</td>
       <td>
-        <div style="display:flex;align-items:center;">
-          <div class="wbar-bg"><div class="wbar-fill" style="width:${t.win_pct*100}%;background:var(--green);"></div></div>
-          <span style="font-family:var(--mono);font-size:13px;">${t.win_pct.toFixed(3)}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <img src="${t.logo}" style="width:24px;height:24px;border-radius:6px;object-fit:cover;" onerror="this.style.display='none'">
+          <strong>${t.name}</strong>
+          ${isMe ? '<span style="font-size:10px;color:var(--green);font-family:var(--mono);margin-left:4px;">● TÚ</span>' : ''}
         </div>
       </td>
-      <td style="font-family:var(--mono);color:var(--amber);font-weight:600;">${t.points_for.toLocaleString()}</td>
+      <td style="font-family:var(--mono); font-weight:600;">${record}</td>
+      <td>
+        <div style="display:flex;align-items:center;">
+          <div class="wbar-bg"><div class="wbar-fill" style="width:${total > 0 ? t.win_pct * 100 : 0}%;background:var(--green);"></div></div>
+          <span style="font-family:var(--mono);font-size:13px;">${winPct}</span>
+        </div>
+      </td>
+      <td style="font-family:var(--mono);color:var(--amber);font-weight:600;">${t.points_for > 0 ? t.points_for.toLocaleString() : '—'}</td>
       <td><span class="pill ${cpClass}">${cp}%</span></td>
       <td><span class="pill ${ppClass}">${pp}%</span></td>
     </tr>`;
   }).join('');
 
+  // Opciones del selector
+  const teamOptions = state.standings.map(t =>
+    `<option value="${t.team_key}" ${t.team_key === myTeamKey ? 'selected' : ''}>${t.name}</option>`
+  ).join('');
+
   document.getElementById('standings-table').innerHTML = `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; padding:12px 14px; background:var(--surface2); border-radius:10px; border:1px solid var(--border);">
+      <span style="font-size:13px; color:var(--muted); font-weight:600; white-space:nowrap;">Mi equipo:</span>
+      <select onchange="setMyTeam(this.value)" style="flex:1;">
+        <option value="">— Elige tu equipo —</option>
+        ${teamOptions}
+      </select>
+    </div>
     <table class="tbl">
       <thead>
         <tr>
@@ -638,7 +680,7 @@ function renderStandingsTable() {
       <tbody>${rows}</tbody>
     </table>`;
 }
-
+  
 function renderZScores() {
   if (state.standings.length === 0) return;
   const top5 = state.standings.slice(0, 5);
