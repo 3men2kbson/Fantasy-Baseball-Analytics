@@ -713,12 +713,12 @@ async def analyze_team(league_key: str, team_key: str):
         "champion_prob":   team["champion_prob"],
     }
 
-@app.get("/api/debug/standings/{league_key}")
-async def debug_standings(league_key: str):
-    data = await yahoo_get(f"/league/{league_key}/standings")
-    league_data = data["fantasy_content"]["league"]
-    league_meta = league_data[1] if isinstance(league_data, list) else league_data
-    teams_data  = league_meta["standings"][0]["teams"]
-    # Devuelve solo el primer equipo crudo para ver la estructura
-    first_team  = teams_data["0"]["team"]
-    return {"raw_team": first_team}
+#@app.get("/api/debug/standings/{league_key}")
+#async def debug_standings(league_key: str):
+#    data = await yahoo_get(f"/league/{league_key}/standings")
+#    league_data = data["fantasy_content"]["league"]
+#    league_meta = league_data[1] if isinstance(league_data, list) else league_data
+#    teams_data  = league_meta["standings"][0]["teams"]
+#    # Devuelve solo el primer equipo crudo para ver la estructura
+#    first_team  = teams_data["0"]["team"]
+#    return {"raw_team": first_team}
