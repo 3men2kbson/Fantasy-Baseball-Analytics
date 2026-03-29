@@ -253,20 +253,31 @@ async def get_standings(league_key: str):
         for i in range(num_teams):
             team         = teams_data[str(i)]["team"]
             info         = team[0]
-            team_outcome = team[1]
-            standing     = team_outcome.get("team_standings", team_outcome) if isinstance(team_outcome, dict) else {}
+            team_outcome = team[1] if len(team) > 1 else {}
 
-            name     = next((x["name"] for x in info if isinstance(x, dict) and "name" in x), "Unknown")
-            team_key = next((x["team_key"] for x in info if isinstance(x, dict) and "team_key" in x), "")
+            # Yahoo puede devolver team_standings directo o dentro de un wrapper
+            if isinstance(team_outcome, dict):
+                standing = team_outcome.get("team_standings", team_outcome)
+            else:
+                standing = {}
+
+            name     = next((x["name"] for x in info
+                             if isinstance(x, dict) and "name" in x), "Unknown")
+            team_key = next((x["team_key"] for x in info
+                             if isinstance(x, dict) and "team_key" in x), "")
             logo     = next((x["team_logos"][0]["team_logo"]["url"]
-                             for x in info if isinstance(x, dict) and "team_logos" in x), "")
+                             for x in info
+                             if isinstance(x, dict) and "team_logos" in x), "")
 
             outcomes    = standing.get("outcome_totals", {})
-            wins        = int(outcomes.get("wins", 0))
-            losses      = int(outcomes.get("losses", 0))
-            ties        = int(outcomes.get("ties", 0))
-            rank        = int(standing.get("rank", i + 1))
-            pts         = float(standing.get("points_for", 0))
+            # Yahoo devuelve wins/losses como strings — convertir a int
+            wins        = int(outcomes.get("wins", 0) or 0)
+            losses      = int(outcomes.get("losses", 0) or 0)
+            ties        = int(outcomes.get("ties", 0) or 0)
+            rank        = int(standing.get("rank", i + 1) or i + 1)
+            # points_for viene en team_points, no en team_standings
+            pts_data    = team_outcome.get("team_points", {})
+            pts         = float(pts_data.get("total", 0) or 0)
             total_games = wins + losses + ties
             win_pct     = (wins + ties * 0.5) / total_games if total_games > 0 else 0.0
 
