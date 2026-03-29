@@ -253,13 +253,21 @@ async def get_standings(league_key: str):
         for i in range(num_teams):
             team         = teams_data[str(i)]["team"]
             info         = team[0]
-            team_outcome = team[1] if len(team) > 1 else {}
+            team         = teams_data[str(i)]["team"]
+            info         = team[0]
 
-            # Yahoo puede devolver team_standings directo o dentro de un wrapper
-            if isinstance(team_outcome, dict):
-                standing = team_outcome.get("team_standings", team_outcome)
-            else:
-                standing = {}
+            # Yahoo devuelve team como lista de 3 elementos:
+            # [0] = info del equipo
+            # [1] = team_stats + team_points  
+            # [2] = team_standings
+            standing = {}
+            pts       = 0.0
+            for part in team[1:]:
+                if isinstance(part, dict):
+                    if "team_standings" in part:
+                        standing = part["team_standings"]
+                    if "team_points" in part:
+                        pts = float(part["team_points"].get("total", 0) or 0)
 
             name     = next((x["name"] for x in info
                              if isinstance(x, dict) and "name" in x), "Unknown")
@@ -270,14 +278,10 @@ async def get_standings(league_key: str):
                              if isinstance(x, dict) and "team_logos" in x), "")
 
             outcomes    = standing.get("outcome_totals", {})
-            # Yahoo devuelve wins/losses como strings — convertir a int
             wins        = int(outcomes.get("wins", 0) or 0)
             losses      = int(outcomes.get("losses", 0) or 0)
             ties        = int(outcomes.get("ties", 0) or 0)
             rank        = int(standing.get("rank", i + 1) or i + 1)
-            # points_for viene en team_points, no en team_standings
-            pts_data    = team_outcome.get("team_points", {})
-            pts         = float(pts_data.get("total", 0) or 0)
             total_games = wins + losses + ties
             win_pct     = (wins + ties * 0.5) / total_games if total_games > 0 else 0.0
 
