@@ -240,30 +240,30 @@ async def get_standings(league_key: str):
         raise HTTPException(500, f"Error obteniendo standings: {str(e)}")
 
     standings = []
-try:
+    try:
         league_data = data["fantasy_content"]["league"]
         # league puede ser lista o dict según versión de Yahoo API
         if isinstance(league_data, list):
             league_meta = league_data[1]
         else:
             league_meta = league_data
-
+    
         teams_data = league_meta["standings"][0]["teams"]
         num_teams  = teams_data["count"]
-
+    
         for i in range(num_teams):
             team = teams_data[str(i)]["team"]
-
+    
             # team es una lista: [0]=info, [1]=standings
             info         = team[0]
             team_outcome = team[1]
-
+    
             # team_outcome puede ser dict directo o tener wrapper
             if isinstance(team_outcome, dict):
                 standing = team_outcome.get("team_standings", team_outcome)
             else:
                 standing = {}
-
+    
             name     = next((x["name"] for x in info
                              if isinstance(x, dict) and "name" in x), "Unknown")
             team_key = next((x["team_key"] for x in info
@@ -271,7 +271,7 @@ try:
             logo     = next((x["team_logos"][0]["team_logo"]["url"]
                              for x in info
                              if isinstance(x, dict) and "team_logos" in x), "")
-
+    
             outcomes    = standing.get("outcome_totals", {})
             wins        = int(outcomes.get("wins", 0))
             losses      = int(outcomes.get("losses", 0))
@@ -280,7 +280,7 @@ try:
             pts         = float(standing.get("points_for", 0))
             total_games = wins + losses + ties
             win_pct     = (wins + ties * 0.5) / total_games if total_games > 0 else 0.0
-
+    
             standings.append({
                 "team_key":      team_key,
                 "name":          name,
