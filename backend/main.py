@@ -240,20 +240,37 @@ async def get_standings(league_key: str):
         raise HTTPException(500, f"Error obteniendo standings: {str(e)}")
 
     standings = []
-    try:
+try:
         league_data = data["fantasy_content"]["league"]
-        teams_data  = league_data[1]["standings"][0]["teams"]
-        num_teams   = teams_data["count"]
+        # league puede ser lista o dict según versión de Yahoo API
+        if isinstance(league_data, list):
+            league_meta = league_data[1]
+        else:
+            league_meta = league_data
+
+        teams_data = league_meta["standings"][0]["teams"]
+        num_teams  = teams_data["count"]
 
         for i in range(num_teams):
-            team     = teams_data[str(i)]["team"]
-            info     = team[0]
-            standing = team[1]["team_standings"]
+            team = teams_data[str(i)]["team"]
 
-            name     = next((x["name"] for x in info if isinstance(x, dict) and "name" in x), "Unknown")
-            team_key = next((x["team_key"] for x in info if isinstance(x, dict) and "team_key" in x), "")
+            # team es una lista: [0]=info, [1]=standings
+            info         = team[0]
+            team_outcome = team[1]
+
+            # team_outcome puede ser dict directo o tener wrapper
+            if isinstance(team_outcome, dict):
+                standing = team_outcome.get("team_standings", team_outcome)
+            else:
+                standing = {}
+
+            name     = next((x["name"] for x in info
+                             if isinstance(x, dict) and "name" in x), "Unknown")
+            team_key = next((x["team_key"] for x in info
+                             if isinstance(x, dict) and "team_key" in x), "")
             logo     = next((x["team_logos"][0]["team_logo"]["url"]
-                             for x in info if isinstance(x, dict) and "team_logos" in x), "")
+                             for x in info
+                             if isinstance(x, dict) and "team_logos" in x), "")
 
             outcomes    = standing.get("outcome_totals", {})
             wins        = int(outcomes.get("wins", 0))
@@ -278,7 +295,7 @@ async def get_standings(league_key: str):
                 "champion_prob": _calc_champion_prob(rank, num_teams, wins, losses),
             })
     except (KeyError, TypeError, IndexError) as e:
-        raise HTTPException(500, f"Error parseando standings: {str(e)}")
+        raise HTTPException(500, f"Error parseando standings: {str(e)} | Raw: {str(data)[:800]}")
 
     return {"standings": sorted(standings, key=lambda x: x["rank"])}
 
