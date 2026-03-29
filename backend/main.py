@@ -194,28 +194,40 @@ async def get_leagues():
 
     leagues = []
     try:
-        users = data["fantasy_content"]["users"]
-        user  = users["0"]["user"]
-        games = user[1]["games"]
+        users     = data["fantasy_content"]["users"]
+        user_data = users["0"]["user"]
+        games     = user_data[1]["games"]
+
         for i in range(games["count"]):
-            game         = games[str(i)]["game"]
-            game_leagues = game[1].get("leagues", {})
+            game_entry   = games[str(i)]["game"]
+            # game_entry[1] puede ser dict o lista según la versión de Yahoo API
+            game_meta    = game_entry[1]
+            if isinstance(game_meta, list):
+                game_meta = {k: v for d in game_meta for k, v in d.items()}
+
+            game_leagues = game_meta.get("leagues", {})
+
+            # También puede venir como lista
+            if isinstance(game_leagues, list):
+                game_leagues = {k: v for d in game_leagues for k, v in d.items()}
+
             for j in range(game_leagues.get("count", 0)):
-                lg = game_leagues[str(j)]["league"][0]
+                lg_entry = game_leagues[str(j)]["league"]
+                # league puede ser lista o dict
+                lg = lg_entry[0] if isinstance(lg_entry, list) else lg_entry
                 leagues.append({
-                    "league_key":   lg["league_key"],
-                    "league_id":    lg["league_id"],
-                    "name":         lg["name"],
-                    "season":       lg["season"],
-                    "num_teams":    lg["num_teams"],
+                    "league_key":   lg.get("league_key", ""),
+                    "league_id":    lg.get("league_id", ""),
+                    "name":         lg.get("name", "Liga sin nombre"),
+                    "season":       lg.get("season", ""),
+                    "num_teams":    lg.get("num_teams", 0),
                     "current_week": lg.get("current_week"),
                     "scoring_type": lg.get("scoring_type"),
                 })
-    except (KeyError, TypeError) as e:
-        raise HTTPException(500, f"Error parseando ligas: {str(e)} | Raw: {str(data)[:400]}")
+    except (KeyError, TypeError, IndexError) as e:
+        raise HTTPException(500, f"Error parseando ligas: {str(e)} | Raw: {str(data)[:600]}")
 
     return {"leagues": leagues}
-
 
 # ─── STANDINGS ────────────────────────────────────────────────────────────────
 @app.get("/api/league/{league_key}/standings")
